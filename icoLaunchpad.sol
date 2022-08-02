@@ -32,14 +32,19 @@ interface IERC202{
 }
 contract ICOLaunchpad {
     // address private constant icoToken = 0x14cD3C7160A1Bc4313F5591DB1786E00c1A904af;
-    address private nftContractaddress = 0x6339Aa52b93403c421D20a2c70A7b7E7cc104B20;
+    address private nftContractaddress = 0xD7AE2801c75e36C03b0aaB2a2C183B5F716af609;
     address private constant FACTORY = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
     address private constant ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     address public constant WETH = 0xc778417E063141139Fce010982780140Aa0cD5Ab;
+
     event ALE(uint,uint,uint);
     event RLE(uint,uint);
+    event Fproject(address ,uint );
+
     using SafeMath for uint;
     address private manager;
+
+
     struct Project{
         string name;
         address payable owner;
@@ -61,9 +66,9 @@ contract ICOLaunchpad {
     }
     // uint timePeriod;
     uint percent = 25 ;
-    event T (address ,uint );
     mapping(string => Project) public projects;
     mapping(string => mapping (address=>Cdata)) public contributors;
+
     constructor(){
         manager = msg.sender;
     }
@@ -84,14 +89,14 @@ contract ICOLaunchpad {
         _;
     }
     // uint sD, uint eD
-    function listProject(string memory _name,string memory _desc,uint _targetAmount,uint _rate,
-        uint _icoTokens,address _add) external {
+    function listProject(string memory _name,string memory _desc,uint sD, uint eD,
+    uint _targetAmount,uint _rate,uint _icoTokens,address _add) external {
         Project  storage newP = projects[_name];
         newP.name = _name;
         newP.owner = payable(msg.sender);
         newP.description = _desc;
-        newP.startDate = 1654021800;
-        newP.endDate = 1656613799;
+        newP.startDate = sD;
+        newP.endDate = eD;
         newP.targetAmount = _targetAmount;
         newP.rate = _rate;
         newP.icoTokens = _icoTokens;
@@ -99,7 +104,7 @@ contract ICOLaunchpad {
     }
     function fundProject(string memory _name) public payable{
         Project  storage p = projects[_name];
-        require(block.timestamp > p.startDate,"project no yet start");
+        require(block.timestamp >= p.startDate,"project no yet start");
         require(block.timestamp < p.endDate,"project ends");
         uint amount =msg.value;
         p.amountGenerated += msg.value;
@@ -109,7 +114,7 @@ contract ICOLaunchpad {
         contributors[_name][msg.sender].tokens= noTokens;
         contributors[_name][msg.sender].date = block.timestamp;
         IERC202(p.projectAdd).mint(msg.sender,noTokens);
-        emit T(msg.sender,noTokens);
+        emit Fproject(msg.sender,noTokens);
     }
     // lock1
     function fundTransfer(string memory _name) public lock1(_name){
@@ -123,8 +128,8 @@ contract ICOLaunchpad {
     function refund(string memory _name,address add) external lock2(_name,add){
         Project  storage p = projects[_name];
         Cdata storage c = contributors[_name][msg.sender];
-        // require(block.timestamp >= p.startDate);
-        // require(block.timestamp < p.endDate);
+        require(block.timestamp >= p.startDate);
+        require(block.timestamp < p.endDate);
         require(msg.sender == add);
         require(contributors[_name][msg.sender].reward == false);
         require(contributors[_name][msg.sender].amount > 0);
@@ -161,35 +166,58 @@ contract ICOLaunchpad {
     emit ALE(amountToken,amountETH,liquidity);
     }
     
+    function getAmountOutMin(address _tokenIn, uint256 _amountIn) internal view returns(uint[] memory){
+
+       //path is an array of addresses.
+       //this path array will have 3 addresses [tokenIn, WETH, tokenOut]
+       //the if statement below takes into account if token in or token out is WETH.  then the path is only 2 addresses
+        address[] memory path;
+        // if (_tokenIn == WETH || _tokenOut == WETH) {
+        path = new address[](2);
+        //     path[0] = _tokenIn;
+        //     path[1] = _tokenOut;
+        // } else {
+        //     path = new address[](3);
+        //     path[0] = _tokenIn;
+        //     path[1] = WETH;
+        //     path[2] = _tokenOut;
+        // }
+        path[0]=_tokenIn;
+        path[1]=WETH;
+        
+        uint256[] memory amountOutMins = IUniswapV2Router02(ROUTER).getAmountsOut(_amountIn, path);
+        
+      return amountOutMins;
+    }  
+
 
     receive() external payable {
-        // assert(msg.sender == WETH); // only accept ETH via fallback from the WETH contract
     }
 
     function getbackETH(address token)external payable onlyManger{
         address pair = IUniswapV2Factory(FACTORY).getPair(token, WETH);
         uint liquidity= IERC20(pair).balanceOf(address(this));
         IERC20(pair).approve(ROUTER, liquidity);
+        uint256[] memory amountOutMins = getAmountOutMin(token,liquidity);
         (uint amountToken, uint amountETH) =
         IUniswapV2Router02(ROUTER).removeLiquidityETH(
           token,
           liquidity,
-          1,
-          1,
+          amountOutMins[0],
+          amountOutMins[1],
           address(this),
           block.timestamp
         );
         emit RLE(amountToken,amountETH);
   }
 
-    function cbalance()external view returns(uint){
-        return address(this).balance;
+    function cbalance(address add)external view returns(uint){
+        return add.balance;
     }
 
 
 
 }
-
 
 
 
